@@ -1,0 +1,18 @@
+{
+  "name": "anchor",
+  "version": "1.0.0",
+  "description": "MVP focus: **Students** (exam prep, deadlines, leadership, work-study balance).",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test:e2e": "playwright test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  }
+}

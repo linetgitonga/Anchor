@@ -1,0 +1,124 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    env_file: [.env]
+    environment:
+      POSTGRES_USER: anchor
+      POSTGRES_PASSWORD: anchor
+      POSTGRES_DB: anchor
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anchor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+  api:
+    build: ./backend
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://anchor:anchor@postgres:5432/anchor
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  web:
+    build: ./frontend
+    env_file: [.env]
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - api
+  celery_worker:
+    build: ./backend
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://anchor:anchor@postgres:5432/anchor
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    command: celery -A app.workers.celery_app worker --loglevel=info
+    healthcheck:
+      disable: true
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+  celery_beat:
+    build: ./backend
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://anchor:anchor@postgres:5432/anchor
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    command: celery -A app.workers.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    healthcheck:
+      disable: true
+    depends_on:
+      redis:
+        condition: service_started
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-08-03T04-33-23Z
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: anchor
+      MINIO_ROOT_PASSWORD: anchorpass123
+    volumes:
+      - miniodata:/data
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+      - api
+  prometheus:
+    image: prom/prometheus:v2.53.2
+    ports:
+      - "9090:9090"
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3001:3000"
+  pgadmin:
+    image: dpage/pgadmin4:8.12
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: anchoradmin123
+volumes:
+  pgdata:
+  miniodata:
